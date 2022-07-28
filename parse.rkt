@@ -32,6 +32,17 @@
 (define any
   (satisfy (const #t)))
 
+;; additional:
+
+(define (char* c)
+  (fmap void (char c)))
+
+(define (without-voids xs)
+  (filter (negate void?) xs))
+
+(define (char-range left right)
+  (satisfy (lambda (c) (char<=? left c right))))
+
 ;; note:
 ;; `item` itself is a parser
 ;; `satisfy` and `char` are not, they are parser creators
@@ -53,7 +64,7 @@
          (on-error)
          (apply on-ok result)))))
 
-(define (sequence . parsers)
+(define (seq . parsers)
   (lambda (chars)
     (if (null? parsers)
         (values '() chars)
@@ -62,24 +73,24 @@
          chars
          (lambda (first-item chars)
            (call-with-parse-result
-            (apply sequence (cdr parsers))
+            (apply seq (cdr parsers))
             chars
             (lambda (rest-items chars)
               (values (cons first-item rest-items)
                       chars))))))))
 
 ;; note:
-;; `sequence` is effectively a multi-argument `and` operator
+;; `seq` is effectively a multi-argument `and` operator
 ;; except it returns all the results as a list instead of the last one
 
 ;; examples:
-;; ((sequence (char #\a) (char #\b) (char #\c)) (string->list "abcd")) => (#\a #\b #\c) (#\d)
-;; ((sequence (char #\a) (char #\b) (char #\c)) (string->list "ab"))   => void
-;; ((sequence) (string->list "a"))                                     => () (#\a)
-;; ((sequence) (string->list ""))                                      => () ()
-;; ((sequence (satisfy char-lower-case?)) (string->list "a"))          => (#\a) ()
+;; ((seq (char #\a) (char #\b) (char #\c)) (string->list "abcd")) => (#\a #\b #\c) (#\d)
+;; ((seq (char #\a) (char #\b) (char #\c)) (string->list "ab"))   => void
+;; ((seq) (string->list "a"))                                     => () (#\a)
+;; ((seq) (string->list ""))                                      => () ()
+;; ((seq (satisfy char-lower-case?)) (string->list "a"))          => (#\a) ()
 
-(define (alternative . parsers)
+(define (alt . parsers)
   (lambda (chars)
     (if (null? parsers)
         (values)
@@ -87,37 +98,37 @@
          (car parsers)
          chars
          values
-         (lambda () ((apply alternative (cdr parsers)) chars))))))
+         (lambda () ((apply alt (cdr parsers)) chars))))))
 
 ;; note:
-;; `alternative` is effectively a multi-argument `or` operator
+;; `alt` is effectively a multi-argument `or` operator
 
 ;; examples:
-;; ((alternative (char #\a) (char #\b) (char #\c)) (string->list "axxx")) => #\a (#\x #\x #x)
-;; ((alternative (char #\a) (char #\b) (char #\c)) (string->list "bxxx")) => #\b (#\x #\x #x)
-;; ((alternative (char #\a) (char #\b) (char #\c)) (string->list "cxxx")) => #\c (#\x #\x #x)
-;; ((alternative (char #\a) (char #\b) (char #\c)) (string->list "dxxx")) => void
-;; ((alternative) (string->list "xxx"))                                   => void
-;; ((alternative (satisfy char-alphabetic?)) (string->list "xxx"))        => #\x (#\x #\x)
+;; ((alt (char #\a) (char #\b) (char #\c)) (string->list "axxx")) => #\a (#\x #\x #x)
+;; ((alt (char #\a) (char #\b) (char #\c)) (string->list "bxxx")) => #\b (#\x #\x #x)
+;; ((alt (char #\a) (char #\b) (char #\c)) (string->list "cxxx")) => #\c (#\x #\x #x)
+;; ((alt (char #\a) (char #\b) (char #\c)) (string->list "dxxx")) => void
+;; ((alt) (string->list "xxx"))                                   => void
+;; ((alt (satisfy char-alphabetic?)) (string->list "xxx"))        => #\x (#\x #\x)
 
 (define (repeat n parser)
-  (apply sequence (make-list n parser)))
+  (apply seq (make-list n parser)))
 
 ;; examples:
 ;; ((repeat 3 (char #\a)) (string->list "aaaa"))                          => (#\a #\a #\a) (#\a)
 ;; ((repeat 3 (char #\a)) (string->list "aa"))                            => void
 ;; ((repeat 0 (char #\a)) (string->list "aaa))                            => () (#\a #\a #\a)
 ;; ((repeat 0 (char #\a)) (string->list ""))                              => () ()
-;; ((repeat 3 (sequence (char #\a) (char #\b))) (string->list "abababc")) => ((#\a #\b) (#\a #\b) (#\a #\b)) (#\c)
-;; ((repeat 3 (sequence (char #\a) (char #\b))) (string->list "ababac"))  => void
-;; ((repeat 3 (sequence (char #\a) (char #\b))) (string->list "xxx"))     => void
+;; ((repeat 3 (seq (char #\a) (char #\b))) (string->list "abababc")) => ((#\a #\b) (#\a #\b) (#\a #\b)) (#\c)
+;; ((repeat 3 (seq (char #\a) (char #\b))) (string->list "ababac"))  => void
+;; ((repeat 3 (seq (char #\a) (char #\b))) (string->list "xxx"))     => void
 
 (define none
   (lambda (chars)
     (values #f chars)))
 
 (define (optional parser)
-  (alternative parser none))
+  (alt parser none))
 
 ;; examples:
 ;; (none (string->list "abc"))                                            => #f (#\a #\b #\c)
@@ -217,7 +228,7 @@
      chars
      (lambda (f chars)
        (call-with-parse-result
-        (apply sequence parsers)
+        (apply seq parsers)
         chars
         (lambda (items chars)
           (values (apply f items)
@@ -240,7 +251,7 @@
 ;; ((lift-applicative + single-digit-integer single-digit-integer) (string->list "123")) => 3 (#\3)
 ;;
 ;; (define single-digit-integer (fmap (compose (curryr - 48) char->integer) (satisfy char-numeric?)))
-;; (define operator (alternative (fmap (const +) (char #\+)) (fmap (const *) (char #\*))))
+;; (define operator (alt (fmap (const +) (char #\+)) (fmap (const *) (char #\*))))
 ;;
 ;; (operator (string->list ""))   => void
 ;; (operator (string->list "+"))  => #<procedure:+> ()
